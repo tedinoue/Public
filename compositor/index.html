@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vivia Compositor</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { overflow: hidden; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+const CW = 800;
+const CH = 1200;
+const MID_X = CW / 2;
+const MID_Y = CH / 2;
+const SNAP_DIST = 8;
+
+const BUBBLE_TYPES = {
+  speech: { label: "Speech", bg: "#fff", border: "#222", dash: false, radius: 20, jagged: false },
+  vivia: { label: "Vivia", bg: "#e8f4ff", border: "#4a9eff", dash: false, radius: 20, jagged: false },
+  caption: { label: "Caption", bg: "#fffde8", border: "#888", dash: false, radius: 4, jagged: false },
+  viviaInt: { label: "Vivia Interior", bg: "#e0eeff", border: "#4a9eff", dash: false, radius: 4, jagged: false },
+  anya: { label: "Anya Memory", bg: "#fff8e0", border: "#c8a84e", dash: false, radius: 4, jagged: false },
+  whisper: { label: "Whisper", bg: "#fff", border: "#999", dash: true, radius: 20, jagged: false },
+  shout: { label: "Shout", bg: "#fff", border: "#222", dash: false, radius: 6, jagged: true },
+  sfx: { label: "SFX", bg: "transparent", border: "transparent", dash: false, radius: 0, jagged: false },
+};
+
+const DEFAULTS = { speech:"Dialogue",vivia:"Vivia speaks",caption:"Narration",viviaInt:"Vivia thinks...",anya:"Memory...",whisper:"whispered",shout:"SHOUT!",sfx:"KRRSH" };
+
+const TAIL_DIRS = [
+  {v:"bottom",l:"Bottom center"},{v:"bottom-left",l:"Bottom left"},{v:"bottom-right",l:"Bottom right"},
+  {v:"top",l:"Top center"},{v:"top-left",l:"Top left"},{v:"top-right",l:"Top right"},
+  {v:"left",l:"Left center"},{v:"right",l:"Right center"},{v:"none",l:"None"},
+];
+
+const TEMPLATES = [
+  { name:"Splash", panels:[{x:0,y:0,w:CW,h:CH}]},
+  { name:"2 Rows", panels:[{x:20,y:20,w:CW-40,h:CH/2-30},{x:20,y:CH/2+10,w:CW-40,h:CH/2-30}]},
+  { name:"3 Rows", panels:[{x:20,y:20,w:CW-40,h:CH/3-27},{x:20,y:CH/3+7,w:CW-40,h:CH/3-27},{x:20,y:2*CH/3-7,w:CW-40,h:CH/3-13}]},
+  { name:"2x2", panels:[{x:20,y:20,w:CW/2-30,h:CH/2-30},{x:CW/2+10,y:20,w:CW/2-30,h:CH/2-30},{x:20,y:CH/2+10,w:CW/2-30,h:CH/2-30},{x:CW/2+10,y:CH/2+10,w:CW/2-30,h:CH/2-30}]},
+  { name:"Wide+2", panels:[{x:20,y:20,w:CW-40,h:CH*.55-20},{x:20,y:CH*.55+10,w:CW/2-30,h:CH*.45-30},{x:CW/2+10,y:CH*.55+10,w:CW/2-30,h:CH*.45-30}]},
+  { name:"5 Manga", panels:[{x:20,y:20,w:CW/2-30,h:CH/3-27},{x:CW/2+10,y:20,w:CW/2-30,h:CH/3-27},{x:20,y:CH/3+7,w:CW-40,h:CH/3-27},{x:20,y:2*CH/3-7,w:CW/2-30,h:CH/3-13},{x:CW/2+10,y:2*CH/3-7,w:CW/2-30,h:CH/3-13}]},
+];
+
+let _u=0;
+const uid=()=>"i"+(++_u)+Math.random().toString(36).slice(2,6);
+
+function getTailPts(w,h,dir){
+  const s=10,L=18;
+  const cx=w/2,cy=h/2;
+  switch(dir){
+    case"bottom":return[[cx-s,h-1],[cx,h+L],[cx+s,h-1]];
+    case"bottom-left":return[[w*.2,h-1],[w*.1-6,h+L],[w*.3,h-1]];
+    case"bottom-right":return[[w*.7,h-1],[w*.9+6,h+L],[w*.8,h-1]];
+    case"top":return[[cx-s,1],[cx,-L],[cx+s,1]];
+    case"top-left":return[[w*.2,1],[w*.1-6,-L],[w*.3,1]];
+    case"top-right":return[[w*.7,1],[w*.9+6,-L],[w*.8,1]];
+    case"left":return[[1,cy-s],[-L,cy],[1,cy+s]];
+    case"right":return[[w-1,cy-s],[w+L,cy],[w-1,cy+s]];
+    default:return null;
+  }
+}
+
+function getTailCover(w,h,dir){
+  switch(dir){
+    case"bottom":case"bottom-left":case"bottom-right":{
+      const pts=getTailPts(w,h,dir);if(!pts)return null;
+      return{x:Math.min(pts[0][0],pts[2][0])-1,y:h-4,w:Math.abs(pts[2][0]-pts[0][0])+2,h:5};}
+    case"top":case"top-left":case"top-right":{
+      const pts=getTailPts(w,h,dir);if(!pts)return null;
+      return{x:Math.min(pts[0][0],pts[2][0])-1,y:-1,w:Math.abs(pts[2][0]-pts[0][0])+2,h:5};}
+    case"left":return{x:-1,y:h/2-10,w:5,h:20};
+    case"right":return{x:w-4,y:h/2-10,w:5,h:20};
+    default:return null;
+  }
+}
+
+function App(){
+  // Panels: frames with optional images inside
+  const [panels,setPanels]=React.useState([]);
+  const [bubbles,setBubbles]=React.useState([]);
+  const [sel,setSel]=React.useState(null); // {id, kind:'panel'|'bubble'}
+  const [mode,setMode]=React.useState("select"); // "select" | "panImage" (panning image inside panel)
+  const [drag,setDrag]=React.useState(null);
+  const [resize,setResize]=React.useState(null);
+  const [imgDrag,setImgDrag]=React.useState(null); // dragging image inside panel
+  const [off,setOff]=React.useState({x:0,y:0});
+  const [bg,setBg]=React.useState("#111118");
+  const [zoom,setZoom]=React.useState(0.75);
+  const [editing,setEditing]=React.useState(null);
+  const [snapLines,setSnapLines]=React.useState({h:false,v:false});
+  const [lockRatio,setLockRatio]=React.useState(true);
+  const [bubbleType,setBubbleType]=React.useState("speech");
+  const [templateConfirm,setTemplateConfirm]=React.useState(null);
+  const [panelBorder,setPanelBorder]=React.useState(2);
+  const canvasRef=React.useRef(null);
+  const fileRef=React.useRef(null);
+  const editRef=React.useRef(null);
+
+  // History as ref to avoid nested setState issues
+  const historyRef = React.useRef([]);
+  const histIdxRef = React.useRef(-1);
+  const [, forceUpdate] = React.useState(0);
+
+  const pushH = () => {
+    const s = { panels: JSON.parse(JSON.stringify(panels)), bubbles: JSON.parse(JSON.stringify(bubbles)) };
+    const trimmed = historyRef.current.slice(0, histIdxRef.current + 1);
+    historyRef.current = [...trimmed, s].slice(-30);
+    histIdxRef.current = historyRef.current.length - 1;
+  };
+
+  const undo = () => {
+    if (histIdxRef.current <= 0) return;
+    histIdxRef.current--;
+    const p = historyRef.current[histIdxRef.current];
+    if (p) { setPanels(p.panels); setBubbles(p.bubbles); forceUpdate(c => c + 1); }
+  };
+
+  const redo = () => {
+    if (histIdxRef.current >= historyRef.current.length - 1) return;
+    histIdxRef.current++;
+    const st = historyRef.current[histIdxRef.current];
+    if (st) { setPanels(st.panels); setBubbles(st.bubbles); forceUpdate(c => c + 1); }
+  };
+
+  const getPos=(e)=>{const r=canvasRef.current.getBoundingClientRect();return{x:(e.clientX-r.left)/zoom,y:(e.clientY-r.top)/zoom};};
+
+  // Panel: a frame. Image lives inside with offsets.
+  const addPanel=()=>{
+    pushH();
+    const p={id:uid(),x:50,y:50+panels.length*20,w:350,h:250,
+      img:null,imgX:0,imgY:0,imgScale:1,imgW:0,imgH:0};
+    setPanels(prev=>[...prev,p]);
+    setSel({id:p.id,kind:"panel"});
+  };
+
+  const upPanel=(id,u)=>setPanels(p=>p.map(x=>x.id===id?{...x,...u}:x));
+  const upBubble=(id,u)=>setBubbles(p=>p.map(x=>x.id===id?{...x,...u}:x));
+
+  const getItem=(s)=>{
+    if(!s)return null;
+    if(s.kind==="panel")return panels.find(p=>p.id===s.id);
+    return bubbles.find(b=>b.id===s.id);
+  };
+
+  const delSel=()=>{if(!sel)return;pushH();if(sel.kind==="panel")setPanels(p=>p.filter(x=>x.id!==sel.id));else setBubbles(p=>p.filter(x=>x.id!==sel.id));setSel(null);};
+  const dupSel=()=>{if(!sel)return;pushH();const it=getItem(sel);if(!it)return;const n={...it,id:uid(),x:it.x+20,y:it.y+20};if(sel.kind==="panel")setPanels(p=>[...p,n]);else setBubbles(p=>[...p,n]);setSel({id:n.id,kind:sel.kind});};
+  const snapH=()=>{if(!sel)return;pushH();const it=getItem(sel);if(it)upItem(sel,{x:Math.round(MID_X-it.w/2)});};
+  const snapV=()=>{if(!sel)return;pushH();const it=getItem(sel);if(it)upItem(sel,{y:Math.round(MID_Y-it.h/2)});};
+  const upItem=(s,u)=>s.kind==="panel"?upPanel(s.id,u):upBubble(s.id,u);
+
+  const moveLayer=(dir)=>{
+    if(!sel)return;const arr=sel.kind==="panel"?panels:bubbles;const setA=sel.kind==="panel"?setPanels:setBubbles;
+    const idx=arr.findIndex(x=>x.id===sel.id);
+    if(dir===1&&idx<arr.length-1){const a=[...arr];[a[idx],a[idx+1]]=[a[idx+1],a[idx]];setA(a);}
+    if(dir===-1&&idx>0){const a=[...arr];[a[idx],a[idx-1]]=[a[idx-1],a[idx]];setA(a);}
+  };
+
+  // Load image into selected panel
+  const loadImageToPanel=(panelId,file)=>{
+    const reader=new FileReader();
+    reader.onload=(e)=>{
+      const img=new Image();
+      img.onload=()=>{
+        const panel=panels.find(p=>p.id===panelId);
+        if(!panel)return;
+        // Scale to cover panel
+        const scaleW=panel.w/img.width;
+        const scaleH=panel.h/img.height;
+        const sc=Math.max(scaleW,scaleH);
+        pushH();
+        upPanel(panelId,{img:e.target.result,imgW:img.width,imgH:img.height,imgScale:sc,imgX:0,imgY:0});
+      };
+      img.src=e.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleFiles=React.useCallback((files)=>{
+    const panel=sel?.kind==="panel"?panels.find(p=>p.id===sel.id):null;
+    if(panel){
+      loadImageToPanel(panel.id,files[0]);
+    } else {
+      // No panel selected: create panel sized for canvas, image fitted inside
+      Array.from(files).forEach(file=>{
+        if(!file.type.startsWith("image/"))return;
+        const reader=new FileReader();
+        reader.onload=(e)=>{
+          const img=new Image();
+          img.onload=()=>{
+            const sc=Math.min((CW*.8)/img.width,(CH*.4)/img.height,1);
+            const w=Math.round(img.width*sc);
+            const h=Math.round(img.height*sc);
+            // imgScale = 1 means native pixels. We want the image to exactly fill the panel.
+            // Panel is w x h. Image is img.width x img.height. Scale to cover:
+            const coverScale=Math.max(w/img.width, h/img.height);
+            const p={id:uid(),x:Math.round(MID_X-w/2),y:40,w,h,
+              img:e.target.result,imgX:0,imgY:0,imgScale:coverScale,imgW:img.width,imgH:img.height};
+            setPanels(prev=>[...prev,p]);
+          };
+          img.src=e.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+  },[sel,panels]);
+
+  const onFileChange=(e)=>{
+    const replaceId=fileRef.current._replaceId;
+    fileRef.current._replaceId=null;
+    if(replaceId&&e.target.files[0]){
+      loadImageToPanel(replaceId,e.target.files[0]);
+    } else {
+      handleFiles(e.target.files);
+    }
+    e.target.value="";
+  };
+
+  const addBubble=()=>{
+    const hasTail=!["caption","viviaInt","anya","sfx"].includes(bubbleType);
+    pushH();
+    const b={id:uid(),type:bubbleType,text:DEFAULTS[bubbleType],
+      x:MID_X-90+Math.random()*40,y:100+Math.random()*100,
+      w:bubbleType==="sfx"?130:190,h:bubbleType==="sfx"?50:65,
+      fontSize:bubbleType==="sfx"?30:bubbleType==="shout"?17:14,
+      bold:bubbleType==="shout"||bubbleType==="sfx",
+      italic:bubbleType==="viviaInt"||bubbleType==="anya",
+      tailDir:hasTail?"bottom-left":"none"};
+    setBubbles(prev=>[...prev,b]);
+    setSel({id:b.id,kind:"bubble"});
+  };
+
+  const doApplyTemplate=(t,keep)=>{
+    pushH();
+    const np=t.panels.map(p=>({id:uid(),x:p.x,y:p.y,w:p.w,h:p.h,img:null,imgX:0,imgY:0,imgScale:1,imgW:0,imgH:0}));
+    if(keep){setPanels(prev=>[...prev,...np]);}else{setPanels(np);setBubbles([]);}
+    setSel(null);setTemplateConfirm(null);
+  };
+  const applyTemplate=(t)=>{
+    if(panels.length>0||bubbles.length>0){setTemplateConfirm(t);return;}
+    doApplyTemplate(t,false);
+  };
+
+  // Mouse: frame drag, frame resize, image pan inside panel
+  const onFrameDown=(e,id)=>{
+    e.stopPropagation();
+    if(editing){setEditing(null);return;}
+    const p=getPos(e);
+    const panel=panels.find(x=>x.id===id);
+    setSel({id,kind:"panel"});
+    setOff({x:p.x-panel.x,y:p.y-panel.y});
+    setDrag({id,kind:"panel"});
+    pushH();
+  };
+
+  const onImgDown=(e,id)=>{
+    // Start panning image inside panel
+    e.stopPropagation();
+    const p=getPos(e);
+    const panel=panels.find(x=>x.id===id);
+    if(!panel||!panel.img)return;
+    setSel({id,kind:"panel"});
+    setImgDrag(id);
+    setOff({x:p.x-panel.imgX,y:p.y-panel.imgY});
+    setMode("panImage");
+    pushH();
+  };
+
+  const onBubbleDown=(e,id)=>{
+    e.stopPropagation();
+    if(editing){setEditing(null);return;}
+    const p=getPos(e);
+    const b=bubbles.find(x=>x.id===id);
+    setSel({id,kind:"bubble"});
+    setOff({x:p.x-b.x,y:p.y-b.y});
+    setDrag({id,kind:"bubble"});
+    pushH();
+  };
+
+  const onResizeDown=(e,id,kind)=>{e.stopPropagation();const p=getPos(e);setResize({id,kind});setOff({x:p.x,y:p.y});pushH();};
+
+  const onDblClick=(e,id)=>{e.stopPropagation();setEditing(id);setTimeout(()=>editRef.current?.focus(),50);};
+
+  const onMove=React.useCallback((e)=>{
+    if(!canvasRef.current)return;
+    const p=getPos(e);
+
+    if(imgDrag){
+      // Panning image inside panel
+      const panel=panels.find(x=>x.id===imgDrag);
+      if(panel){
+        upPanel(imgDrag,{imgX:p.x-off.x,imgY:p.y-off.y});
+      }
+      return;
+    }
+
+    if(drag){
+      let nx=p.x-off.x,ny=p.y-off.y;
+      const it=drag.kind==="panel"?panels.find(x=>x.id===drag.id):bubbles.find(x=>x.id===drag.id);
+      if(!it)return;
+      const icx=nx+it.w/2,icy=ny+it.h/2;
+      let sH=false,sV=false;
+      if(Math.abs(icx-MID_X)<SNAP_DIST){nx=MID_X-it.w/2;sH=true;}
+      if(Math.abs(icy-MID_Y)<SNAP_DIST){ny=MID_Y-it.h/2;sV=true;}
+      setSnapLines({h:sH,v:sV});
+      if(drag.kind==="panel")upPanel(drag.id,{x:nx,y:ny});
+      else upBubble(drag.id,{x:nx,y:ny});
+    }
+    if(resize){
+      const it=resize.kind==="panel"?panels.find(x=>x.id===resize.id):bubbles.find(x=>x.id===resize.id);
+      if(!it)return;
+      const dx=p.x-off.x,dy=p.y-off.y;
+      if(resize.kind==="panel"&&lockRatio&&it.imgW){
+        const ratio=it.h/it.w;
+        const nw=Math.max(40,it.w+dx);
+        upPanel(resize.id,{w:nw,h:Math.round(nw*ratio)});
+      } else {
+        const upFn=resize.kind==="panel"?upPanel:upBubble;
+        upFn(resize.id,{w:Math.max(40,it.w+dx),h:Math.max(20,it.h+dy)});
+      }
+      setOff({x:p.x,y:p.y});
+    }
+  },[drag,resize,imgDrag,off,zoom,panels,bubbles,lockRatio]);
+
+  const onUp=React.useCallback(()=>{setDrag(null);setResize(null);setImgDrag(null);setMode("select");setSnapLines({h:false,v:false});},[]);
+
+  React.useEffect(()=>{window.addEventListener("mousemove",onMove);window.addEventListener("mouseup",onUp);return()=>{window.removeEventListener("mousemove",onMove);window.removeEventListener("mouseup",onUp);};},[onMove,onUp]);
+
+  // Image zoom with mouse wheel on panel
+  const wheelTimerRef = React.useRef(null);
+  const onPanelWheel=(e,id)=>{
+    e.stopPropagation();
+    e.preventDefault();
+    const panel=panels.find(p=>p.id===id);
+    if(!panel||!panel.img)return;
+    if(!wheelTimerRef.current) pushH();
+    clearTimeout(wheelTimerRef.current);
+    wheelTimerRef.current = setTimeout(()=>{wheelTimerRef.current=null;}, 300);
+    // Proportional zoom: 5% per tick, so it feels consistent at any scale
+    const factor = e.deltaY > 0 ? 0.975 : 1.025;
+    const newScale = Math.max(0.02, Math.min(5, panel.imgScale * factor));
+    upPanel(id,{imgScale:newScale});
+  };
+
+  // Keyboard
+  React.useEffect(()=>{
+    const h=(e)=>{
+      if(editing)return;
+      if((e.key==="Delete"||e.key==="Backspace")&&sel){e.preventDefault();delSel();}
+      if(e.key==="d"&&(e.ctrlKey||e.metaKey)){e.preventDefault();dupSel();}
+      if(e.key==="z"&&(e.ctrlKey||e.metaKey)&&!e.shiftKey){e.preventDefault();undo();}
+      if((e.key==="z"&&(e.ctrlKey||e.metaKey)&&e.shiftKey)||(e.key==="y"&&(e.ctrlKey||e.metaKey))){e.preventDefault();redo();}
+      if(sel&&["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key)){
+        e.preventDefault();
+        const n=e.shiftKey?10:1;
+        const d={ArrowUp:{y:-n},ArrowDown:{y:n},ArrowLeft:{x:-n},ArrowRight:{x:n}}[e.key];
+        const it=getItem(sel);
+        if(it)upItem(sel,{x:it.x+(d.x||0),y:it.y+(d.y||0)});
+      }
+    };
+    window.addEventListener("keydown",h);return()=>window.removeEventListener("keydown",h);
+  },[sel,editing,panels,bubbles]);
+
+  // Export
+  const exportPage=async()=>{
+    const prev=sel;setSel(null);setEditing(null);
+    await new Promise(r=>setTimeout(r,100));
+    const canvas=document.createElement("canvas");
+    canvas.width=CW*3;canvas.height=CH*3;
+    const ctx=canvas.getContext("2d");ctx.scale(3,3);
+    ctx.fillStyle=bg;ctx.fillRect(0,0,CW,CH);
+
+    // Panels
+    for(const p of panels){
+      ctx.save();
+      ctx.beginPath();ctx.rect(p.x,p.y,p.w,p.h);ctx.clip();
+      if(p.img){
+        const img=new Image();img.src=p.img;
+        await new Promise(r=>{img.onload=r;img.onerror=r;});
+        ctx.drawImage(img,p.x+p.imgX,p.y+p.imgY,p.imgW*p.imgScale,p.imgH*p.imgScale);
+      } else {
+        ctx.fillStyle="#1a1a2e";ctx.fillRect(p.x,p.y,p.w,p.h);
+      }
+      ctx.restore();
+      if(panelBorder>0){ctx.strokeStyle="#222";ctx.lineWidth=panelBorder;ctx.strokeRect(p.x,p.y,p.w,p.h);}
+    }
+
+    // Bubbles
+    for(const b of bubbles){
+      const bt=BUBBLE_TYPES[b.type];ctx.save();
+      if(bt.jagged){
+        ctx.beginPath();const steps=48;
+        for(let i=0;i<=steps;i++){const t=i/steps;let px,py;
+          if(t<=.25){px=b.x+b.w*t*4;py=b.y;}else if(t<=.5){px=b.x+b.w;py=b.y+b.h*(t-.25)*4;}
+          else if(t<=.75){px=b.x+b.w-b.w*(t-.5)*4;py=b.y+b.h;}else{px=b.x;py=b.y+b.h-b.h*(t-.75)*4;}
+          px+=Math.sin(i*7.3)*4;py+=Math.cos(i*5.1)*4;
+          if(i===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);}
+        ctx.closePath();ctx.fillStyle=bt.bg;ctx.fill();ctx.strokeStyle=bt.border;ctx.lineWidth=2;ctx.stroke();
+      } else if(bt.bg!=="transparent"){
+        ctx.fillStyle=bt.bg;ctx.strokeStyle=bt.border;ctx.lineWidth=2;
+        if(bt.dash)ctx.setLineDash([6,4]);
+        const r=bt.radius;ctx.beginPath();
+        ctx.moveTo(b.x+r,b.y);ctx.lineTo(b.x+b.w-r,b.y);ctx.quadraticCurveTo(b.x+b.w,b.y,b.x+b.w,b.y+r);
+        ctx.lineTo(b.x+b.w,b.y+b.h-r);ctx.quadraticCurveTo(b.x+b.w,b.y+b.h,b.x+b.w-r,b.y+b.h);
+        ctx.lineTo(b.x+r,b.y+b.h);ctx.quadraticCurveTo(b.x,b.y+b.h,b.x,b.y+b.h-r);
+        ctx.lineTo(b.x,b.y+r);ctx.quadraticCurveTo(b.x,b.y,b.x+r,b.y);ctx.closePath();
+        ctx.fill();if(bt.border!=="transparent")ctx.stroke();ctx.setLineDash([]);
+      }
+      // Tail
+      if(b.tailDir&&b.tailDir!=="none"){
+        const pts=getTailPts(b.w,b.h,b.tailDir);
+        if(pts){
+          ctx.fillStyle=bt.bg==="transparent"?"#fff":bt.bg;ctx.strokeStyle=bt.border;ctx.lineWidth=2;
+          ctx.beginPath();ctx.moveTo(b.x+pts[0][0],b.y+pts[0][1]);ctx.lineTo(b.x+pts[1][0],b.y+pts[1][1]);ctx.lineTo(b.x+pts[2][0],b.y+pts[2][1]);ctx.closePath();ctx.fill();ctx.stroke();
+          const c=getTailCover(b.w,b.h,b.tailDir);
+          if(c){ctx.fillStyle=bt.bg==="transparent"?"#fff":bt.bg;ctx.fillRect(b.x+c.x,b.y+c.y,c.w,c.h);}
+        }
+      }
+      ctx.fillStyle="#111";
+      ctx.font=`${b.italic?"italic ":""}${b.bold?"bold ":""}${b.fontSize}px ${b.type==="sfx"?"'Impact','Arial Black',sans-serif":"'Segoe UI',sans-serif"}`;
+      ctx.textAlign="center";ctx.textBaseline="middle";
+      const lines=b.text.split("\n");const lh=b.fontSize*1.3;
+      const sy=b.y+b.h/2-((lines.length-1)*lh)/2;
+      lines.forEach((l,i)=>ctx.fillText(l,b.x+b.w/2,sy+i*lh));
+      ctx.restore();
+    }
+
+    const dataUrl=canvas.toDataURL("image/png");
+    const link=document.createElement("a");link.download="vivia_page.png";link.href=dataUrl;
+    document.body.appendChild(link);link.click();document.body.removeChild(link);
+    setSel(prev);
+  };
+
+  const selItem=getItem(sel);
+  const selPanel=sel?.kind==="panel"?selItem:null;
+  const selBubble=sel?.kind==="bubble"?selItem:null;
+  const sBtn={background:"#1e1e32",color:"#aab",border:"1px solid #2a2a3e",padding:"5px 8px",borderRadius:4,cursor:"pointer",fontSize:11,fontWeight:600};
+
+  return(
+    <div style={{display:"flex",height:"100vh",fontFamily:"'Segoe UI',sans-serif",background:"#0a0a12",color:"#e0e0e8",overflow:"hidden"}}>
+      {/* Toolbar */}
+      <div style={{width:270,background:"#12121e",borderRight:"1px solid #2a2a3e",padding:14,display:"flex",flexDirection:"column",gap:10,overflowY:"auto",flexShrink:0}}>
+        <div style={{fontSize:17,fontWeight:700,letterSpacing:".05em",color:"#4a9eff",borderBottom:"1px solid #2a2a3e",paddingBottom:8}}>VIVIA COMPOSITOR</div>
+
+        {/* Templates */}
+        <div>
+          <div style={{fontSize:10,fontWeight:700,color:"#666",letterSpacing:".1em",marginBottom:4}}>TEMPLATES</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:3}}>
+            {TEMPLATES.map(t=><button key={t.name} onClick={()=>applyTemplate(t)} style={{...sBtn,fontSize:10,padding:"3px 6px"}}>{t.name}</button>)}
+          </div>
+        </div>
+
+        {/* Panels */}
+        <div style={{borderTop:"1px solid #2a2a3e",paddingTop:8}}>
+          <div style={{fontSize:10,fontWeight:700,color:"#666",letterSpacing:".1em",marginBottom:4}}>PANELS</div>
+          <div style={{display:"flex",gap:4}}>
+            <button onClick={addPanel} style={{...sBtn,flex:1,color:"#4a9eff",borderColor:"#4a9eff44"}}>+ Add Panel</button>
+            <button onClick={()=>{fileRef.current._replaceId=null;fileRef.current.click();}} style={{...sBtn,flex:1,color:"#4a9eff",borderColor:"#4a9eff44"}}>+ Upload Image</button>
+          </div>
+          <input ref={fileRef} type="file" multiple accept="image/*" style={{display:"none"}} onChange={onFileChange}/>
+        </div>
+
+        {/* Lettering */}
+        <div style={{borderTop:"1px solid #2a2a3e",paddingTop:8}}>
+          <div style={{fontSize:10,fontWeight:700,color:"#666",letterSpacing:".1em",marginBottom:4}}>LETTERING</div>
+          <select value={bubbleType} onChange={e=>setBubbleType(e.target.value)} style={{width:"100%",background:"#1e1e32",color:"#e0e0e8",border:"1px solid #2a2a3e",borderRadius:4,padding:"5px 7px",fontSize:12,marginBottom:4}}>
+            {Object.entries(BUBBLE_TYPES).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+          </select>
+          <button onClick={addBubble} style={{width:"100%",background:"#4a9eff",color:"#fff",border:"none",padding:"7px",borderRadius:4,cursor:"pointer",fontSize:12,fontWeight:600}}>
+            Add {BUBBLE_TYPES[bubbleType].label}
+          </button>
+        </div>
+
+        {/* Panel properties */}
+        {selPanel&&(
+          <div style={{borderTop:"1px solid #2a2a3e",paddingTop:8}}>
+            <div style={{fontSize:10,fontWeight:700,color:"#666",letterSpacing:".1em",marginBottom:4}}>PANEL</div>
+            <div style={{fontSize:11,color:"#888",marginBottom:4}}>{Math.round(selPanel.w)} x {Math.round(selPanel.h)}px</div>
+            {!selPanel.img?(
+              <button onClick={()=>{fileRef.current._replaceId=sel.id;fileRef.current.click();}} style={{...sBtn,width:"100%",color:"#4a9eff",borderColor:"#4a9eff44",marginBottom:4}}>Load Image</button>
+            ):(
+              <div style={{marginBottom:4}}>
+                <div style={{fontSize:11,color:"#888",marginBottom:3}}>Image: drag to pan, scroll to zoom</div>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <span style={{fontSize:11}}>Zoom</span>
+                  <input type="range" min={0.1} max={3} step={0.02} value={selPanel.imgScale} onChange={e=>{pushH();upPanel(sel.id,{imgScale:+e.target.value});}} style={{flex:1}}/>
+                  <span style={{color:"#4a9eff",fontSize:10}}>{Math.round(selPanel.imgScale*100)}%</span>
+                </div>
+                <button onClick={()=>{pushH();upPanel(sel.id,{imgX:0,imgY:0,imgScale:Math.max(selPanel.w/selPanel.imgW,selPanel.h/selPanel.imgH)});}} style={{...sBtn,width:"100%",marginTop:4,fontSize:10}}>Fit to Panel</button>
+                <button onClick={()=>{fileRef.current._replaceId=sel.id;fileRef.current.click();}} style={{...sBtn,width:"100%",marginTop:3,fontSize:10}}>Replace Image</button>
+              </div>
+            )}
+            <label style={{fontSize:11,display:"flex",alignItems:"center",gap:4,cursor:"pointer"}}>
+              <input type="checkbox" checked={lockRatio} onChange={e=>setLockRatio(e.target.checked)}/>
+              Lock aspect ratio
+            </label>
+          </div>
+        )}
+
+        {/* Bubble properties */}
+        {selBubble&&(
+          <div style={{borderTop:"1px solid #2a2a3e",paddingTop:8}}>
+            <div style={{fontSize:10,fontWeight:700,color:"#666",letterSpacing:".1em",marginBottom:4}}>BUBBLE</div>
+            <textarea value={selBubble.text} onChange={e=>upBubble(sel.id,{text:e.target.value})} style={{width:"100%",background:"#1e1e32",color:"#e0e0e8",border:"1px solid #2a2a3e",borderRadius:4,padding:6,fontSize:12,resize:"vertical",minHeight:50,fontFamily:"inherit"}}/>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
+              <span style={{fontSize:11}}>Size</span>
+              <input type="range" min={9} max={52} value={selBubble.fontSize} onChange={e=>upBubble(sel.id,{fontSize:+e.target.value})} style={{flex:1}}/>
+              <span style={{color:"#4a9eff",fontSize:11}}>{selBubble.fontSize}</span>
+            </div>
+            <div style={{display:"flex",gap:8,marginTop:4}}>
+              {[["bold","B"],["italic","I"]].map(([k,l])=>(
+                <label key={k} style={{fontSize:11,display:"flex",alignItems:"center",gap:3,cursor:"pointer"}}>
+                  <input type="checkbox" checked={selBubble[k]} onChange={e=>upBubble(sel.id,{[k]:e.target.checked})}/>{l}
+                </label>
+              ))}
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
+              <span style={{fontSize:11}}>Tail</span>
+              <select value={selBubble.tailDir} onChange={e=>upBubble(sel.id,{tailDir:e.target.value})} style={{flex:1,background:"#1e1e32",color:"#e0e0e8",border:"1px solid #2a2a3e",borderRadius:3,padding:"2px 4px",fontSize:11}}>
+                {TAIL_DIRS.map(d=><option key={d.v} value={d.v}>{d.l}</option>)}
+              </select>
+            </div>
+          </div>
+        )}
+
+        {/* Actions */}
+        {sel&&(
+          <div style={{borderTop:"1px solid #2a2a3e",paddingTop:8}}>
+            <div style={{fontSize:10,fontWeight:700,color:"#666",letterSpacing:".1em",marginBottom:4}}>ACTIONS</div>
+            <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
+              <button onClick={snapH} style={sBtn}>H-Center</button>
+              <button onClick={snapV} style={sBtn}>V-Center</button>
+              <button onClick={dupSel} style={sBtn}>Duplicate</button>
+              <button onClick={()=>moveLayer(1)} style={sBtn}>Forward</button>
+              <button onClick={()=>moveLayer(-1)} style={sBtn}>Back</button>
+              <button onClick={delSel} style={{...sBtn,color:"#ff6b6b",borderColor:"#ff6b6b33"}}>Delete</button>
+            </div>
+          </div>
+        )}
+
+        {/* Page */}
+        <div style={{borderTop:"1px solid #2a2a3e",paddingTop:8}}>
+          <div style={{fontSize:10,fontWeight:700,color:"#666",letterSpacing:".1em",marginBottom:4}}>PAGE</div>
+          <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+            <span style={{fontSize:11}}>BG</span>
+            <input type="color" value={bg} onChange={e=>setBg(e.target.value)} style={{width:28,height:20,border:"none",cursor:"pointer"}}/>
+            <span style={{fontSize:11,marginLeft:4}}>Border</span>
+            <input type="range" min={0} max={6} value={panelBorder} onChange={e=>setPanelBorder(+e.target.value)} style={{width:50}}/>
+            <span style={{color:"#4a9eff",fontSize:10}}>{panelBorder}px</span>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
+            <span style={{fontSize:11}}>Zoom</span>
+            <input type="range" min={0.25} max={1.5} step={0.05} value={zoom} onChange={e=>setZoom(+e.target.value)} style={{flex:1}}/>
+            <span style={{color:"#4a9eff",fontSize:10}}>{Math.round(zoom*100)}%</span>
+          </div>
+        </div>
+
+        {/* Shortcuts */}
+        <div style={{borderTop:"1px solid #2a2a3e",paddingTop:8}}>
+          <div style={{fontSize:10,fontWeight:700,color:"#666",letterSpacing:".1em",marginBottom:3}}>SHORTCUTS</div>
+          <div style={{fontSize:10,color:"#555",lineHeight:1.6}}>
+            Del: delete | Ctrl+D: duplicate<br/>
+            Ctrl+Z: undo | Ctrl+Shift+Z: redo<br/>
+            Arrows: nudge (Shift=10px)<br/>
+            Dbl-click bubble: edit text<br/>
+            Scroll on panel: zoom image
+          </div>
+        </div>
+
+        <div style={{marginTop:"auto",paddingTop:10}}>
+          <button onClick={exportPage} style={{width:"100%",background:"linear-gradient(135deg,#4a9eff,#2d7ad6)",color:"#fff",border:"none",padding:"11px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:700}}>Export Page (3x PNG)</button>
+          <div style={{fontSize:9,color:"#444",textAlign:"center",marginTop:3}}>2400 x 3600px</div>
+        </div>
+      </div>
+
+      {/* Canvas area */}
+      <div style={{flex:1,overflow:"auto",display:"flex",justifyContent:"center",alignItems:"flex-start",padding:30,background:"#0a0a12",position:"relative"}}
+        onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();handleFiles(e.dataTransfer.files);}}
+        onClick={()=>{setSel(null);setEditing(null);}}>
+
+        {/* Template confirm dialog */}
+        {templateConfirm&&(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",justifyContent:"center",alignItems:"center",zIndex:9999}} onClick={e=>{e.stopPropagation();setTemplateConfirm(null);}}>
+            <div style={{background:"#1e1e32",border:"1px solid #4a9eff",borderRadius:8,padding:24,maxWidth:340,textAlign:"center"}} onClick={e=>e.stopPropagation()}>
+              <div style={{fontSize:15,fontWeight:600,marginBottom:12}}>Page has content</div>
+              <div style={{fontSize:12,color:"#888",marginBottom:16}}>Apply "{templateConfirm.name}" template?</div>
+              <div style={{display:"flex",gap:8,justifyContent:"center"}}>
+                <button onClick={()=>doApplyTemplate(templateConfirm,false)} style={{background:"#ff6b6b22",color:"#ff6b6b",border:"1px solid #ff6b6b44",padding:"8px 14px",borderRadius:4,cursor:"pointer",fontSize:12,fontWeight:600}}>Replace All</button>
+                <button onClick={()=>doApplyTemplate(templateConfirm,true)} style={{background:"#4a9eff",color:"#fff",border:"none",padding:"8px 14px",borderRadius:4,cursor:"pointer",fontSize:12,fontWeight:600}}>Add</button>
+                <button onClick={()=>setTemplateConfirm(null)} style={{background:"#2a2a3e",color:"#aab",border:"1px solid #3a3a4e",padding:"8px 14px",borderRadius:4,cursor:"pointer",fontSize:12,fontWeight:600}}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div ref={canvasRef} style={{width:CW,height:CH,background:bg,position:"relative",boxShadow:"0 8px 60px rgba(74,158,255,.06),0 2px 8px rgba(0,0,0,.5)",transform:`scale(${zoom})`,transformOrigin:"top center",flexShrink:0}}>
+
+          {snapLines.h&&<div style={{position:"absolute",left:MID_X,top:0,width:1,height:CH,background:"#4a9eff55",pointerEvents:"none",zIndex:999}}/>}
+          {snapLines.v&&<div style={{position:"absolute",top:MID_Y,left:0,height:1,width:CW,background:"#4a9eff55",pointerEvents:"none",zIndex:999}}/>}
+
+          {panels.length===0&&bubbles.length===0&&(
+            <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",justifyContent:"center",alignItems:"center",color:"#2a2a3e",fontSize:15,gap:6,pointerEvents:"none"}}>
+              <div style={{fontSize:44,opacity:.3}}>&#9634;</div>
+              <div>Choose a template or add panels</div>
+            </div>
+          )}
+
+          {/* Panels as clipping frames */}
+          {panels.map(p=>(
+            <div key={p.id} style={{position:"absolute",left:p.x,top:p.y,width:p.w,height:p.h,overflow:"hidden",
+              outline:sel?.id===p.id?"2px solid #4a9eff":"none",outlineOffset:1,zIndex:1,
+              border:panelBorder>0?`${panelBorder}px solid #222`:"none",boxSizing:"border-box"}}>
+              {/* Image inside panel */}
+              {p.img?(
+                <img src={p.img} alt="" draggable={false}
+                  onClick={e=>e.stopPropagation()}
+                  onMouseDown={e=>onImgDown(e,p.id)}
+                  onWheel={e=>onPanelWheel(e,p.id)}
+                  style={{position:"absolute",left:p.imgX,top:p.imgY,width:p.imgW*p.imgScale,height:p.imgH*p.imgScale,
+                    cursor:imgDrag===p.id?"grabbing":"grab",userSelect:"none",maxWidth:"none"}}/>
+              ):(
+                <div style={{width:"100%",height:"100%",background:"#1a1a2e",display:"flex",flexDirection:"column",justifyContent:"center",alignItems:"center",color:"#444",fontSize:12,cursor:"pointer",gap:4}}
+                  onClick={e=>e.stopPropagation()}
+                  onMouseDown={e=>onFrameDown(e,p.id)}
+                  onDoubleClick={e=>{e.stopPropagation();fileRef.current._replaceId=p.id;fileRef.current.click();}}>
+                  <div style={{fontSize:20,opacity:.5}}>+</div>
+                  <div>double-click to add image</div>
+                </div>
+              )}
+              {/* Frame drag handle: top edge */}
+              <div onMouseDown={e=>onFrameDown(e,p.id)} style={{position:"absolute",top:0,left:0,right:0,height:20,cursor:drag?.id===p.id?"grabbing":"move",zIndex:2}}/>
+              {/* Resize handle */}
+              {sel?.id===p.id&&(
+                <div onMouseDown={e=>onResizeDown(e,p.id,"panel")} style={{position:"absolute",right:-4,bottom:-4,width:14,height:14,background:"#4a9eff",borderRadius:2,cursor:"nwse-resize",border:"2px solid #0a0a12",zIndex:3}}/>
+              )}
+            </div>
+          ))}
+
+          {/* Bubbles */}
+          {bubbles.map((b,bi)=>{
+            const bt=BUBBLE_TYPES[b.type];
+            const isEd=editing===b.id;
+            const svgPad=22;
+            const svgW=b.w+svgPad*2;
+            const svgH=b.h+svgPad*2;
+            return(
+              <div key={b.id} style={{position:"absolute",left:b.x-svgPad,top:b.y-svgPad,width:svgW,height:svgH,zIndex:100+bi}}>
+                {/* Hit area */}
+                <div onMouseDown={e=>onBubbleDown(e,b.id)} onClick={e=>e.stopPropagation()} onDoubleClick={e=>onDblClick(e,b.id)}
+                  style={{position:"absolute",top:svgPad,left:svgPad,width:b.w,height:b.h,cursor:drag?.id===b.id?"grabbing":"grab",zIndex:5}}/>
+                {/* SVG */}
+                <svg width={svgW} height={svgH} style={{position:"absolute",top:0,left:0,overflow:"visible",pointerEvents:"none"}}>
+                  <g transform={`translate(${svgPad},${svgPad})`}>
+                    {bt.jagged?(()=>{
+                      const pts=[];const steps=40;
+                      for(let i=0;i<=steps;i++){const t=i/steps;let px,py;
+                        if(t<=.25){px=b.w*t*4;py=0;}else if(t<=.5){px=b.w;py=b.h*(t-.25)*4;}
+                        else if(t<=.75){px=b.w-b.w*(t-.5)*4;py=b.h;}else{px=0;py=b.h-b.h*(t-.75)*4;}
+                        px+=Math.sin(i*7.3)*4;py+=Math.cos(i*5.1)*4;pts.push(`${px},${py}`);}
+                      return<polygon points={pts.join(" ")} fill={bt.bg} stroke={bt.border} strokeWidth={2}/>;
+                    })():bt.bg!=="transparent"?
+                      <rect x={0} y={0} width={b.w} height={b.h} rx={bt.radius} ry={bt.radius} fill={bt.bg} stroke={bt.border} strokeWidth={2} strokeDasharray={bt.dash?"6,4":"none"}/>
+                    :null}
+                    {b.tailDir&&b.tailDir!=="none"&&(()=>{
+                      const pts=getTailPts(b.w,b.h,b.tailDir);
+                      if(!pts)return null;
+                      const c=getTailCover(b.w,b.h,b.tailDir);
+                      return<>
+                        <polygon points={pts.map(p=>p.join(",")).join(" ")} fill={bt.bg==="transparent"?"#fff":bt.bg} stroke={bt.border} strokeWidth={2}/>
+                        {c&&<rect x={c.x} y={c.y} width={c.w} height={c.h} fill={bt.bg==="transparent"?"#fff":bt.bg}/>}
+                      </>;
+                    })()}
+                  </g>
+                </svg>
+                {/* Text */}
+                <div style={{position:"absolute",top:svgPad,left:svgPad,width:b.w,height:b.h,display:"flex",justifyContent:"center",alignItems:"center",textAlign:"center",
+                  fontSize:b.fontSize,fontWeight:b.bold?700:400,fontStyle:b.italic?"italic":"normal",color:"#111",
+                  padding:"4px 8px",lineHeight:1.3,whiteSpace:"pre-wrap",wordBreak:"break-word",pointerEvents:"none",
+                  fontFamily:b.type==="sfx"?"'Impact','Arial Black',sans-serif":"'Segoe UI',sans-serif"}}>
+                  {!isEd&&b.text}
+                </div>
+                {isEd&&(
+                  <textarea ref={editRef} value={b.text} onChange={e=>upBubble(b.id,{text:e.target.value})}
+                    onKeyDown={e=>{if(e.key==="Escape")setEditing(null);}}
+                    onClick={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
+                    style={{position:"absolute",top:svgPad,left:svgPad,width:b.w,height:b.h,background:"rgba(255,255,255,.95)",
+                      border:"2px solid #4a9eff",borderRadius:bt.radius,fontSize:b.fontSize,fontWeight:b.bold?700:400,
+                      fontStyle:b.italic?"italic":"normal",color:"#111",padding:"4px 8px",textAlign:"center",resize:"none",
+                      fontFamily:b.type==="sfx"?"Impact,sans-serif":"inherit",zIndex:20,outline:"none"}}/>
+                )}
+                {sel?.id===b.id&&!isEd&&<div style={{position:"absolute",top:svgPad-2,left:svgPad-2,width:b.w+4,height:b.h+4,border:"2px solid #4a9eff",borderRadius:bt.radius,pointerEvents:"none",zIndex:3}}/>}
+                {sel?.id===b.id&&<div onMouseDown={e=>onResizeDown(e,b.id,"bubble")} style={{position:"absolute",right:svgPad-8,bottom:svgPad-8,width:14,height:14,background:"#4a9eff",borderRadius:2,cursor:"nwse-resize",border:"2px solid #0a0a12",zIndex:30}}/>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
