@@ -1,0 +1,981 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clocks in the Wild — Field Reports</title>
+<style>
+:root {
+  --bg: #0a0a12;
+  --panel: #1e1e32;
+  --panel-2: #161624;
+  --border: #2a2a3e;
+  --border-hi: #3a3a52;
+  --accent: #4a9eff;
+  --accent-dim: #2e6bb8;
+  --text: #e0e0e8;
+  --muted: #8a8aa0;
+  --warn: #ffb454;
+  --good: #5fcf80;
+  --code-bg: #0f0f1a;
+}
+* { box-sizing: border-box; }
+body {
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  margin: 0;
+  padding: 0;
+  line-height: 1.5;
+  font-size: 16px;
+}
+.container { max-width: 880px; margin: 0 auto; padding: 32px 24px 96px; }
+h1 {
+  color: var(--accent);
+  font-size: 32px;
+  letter-spacing: 0.04em;
+  margin: 0 0 4px;
+  text-transform: uppercase;
+}
+h2 {
+  color: var(--accent);
+  font-size: 20px;
+  margin: 32px 0 12px;
+  letter-spacing: 0.02em;
+}
+h3 {
+  color: var(--text);
+  font-size: 17px;
+  margin: 16px 0 8px;
+}
+p { margin: 0 0 12px; }
+a { color: var(--accent); }
+.subtitle { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+.intro { color: #c4c4d4; font-size: 15px; margin-bottom: 24px; }
+.intro a { text-decoration: none; border-bottom: 1px solid var(--accent-dim); }
+.intro a:hover { border-bottom-color: var(--accent); }
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.panel-2 {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+.field { margin-bottom: 14px; }
+.field label {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 6px;
+  letter-spacing: 0.02em;
+}
+input[type="text"], input[type="email"], select, textarea {
+  width: 100%;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 14px;
+}
+input[type="text"]:focus, input[type="email"]:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+textarea { resize: vertical; min-height: 60px; }
+.radios { display: flex; flex-wrap: wrap; gap: 12px; }
+.radios label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+}
+.radios input { accent-color: var(--accent); }
+.clock-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.clock-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  cursor: pointer;
+  user-select: none;
+}
+.clock-header:hover { background: rgba(74, 158, 255, 0.04); }
+.clock-thumb {
+  width: 56px;
+  height: 56px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+  background: #fff;
+}
+.clock-title { flex: 1; }
+.clock-title-name { font-weight: 600; color: var(--text); font-size: 15px; }
+.clock-title-desc { color: var(--muted); font-size: 13px; }
+.clock-counter {
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 10px;
+}
+.clock-counter.has { color: var(--good); border-color: var(--good); }
+.chevron { color: var(--muted); transition: transform 0.15s; }
+.clock-card.open .chevron { transform: rotate(90deg); }
+.clock-body { display: none; padding: 0 16px 16px; }
+.clock-card.open .clock-body { display: block; }
+.clock-image-wrap {
+  text-align: center;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--code-bg);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.clock-image-wrap img {
+  max-width: 280px;
+  width: 100%;
+  border-radius: 4px;
+  cursor: zoom-in;
+  background: #fff;
+}
+.clock-image-actions {
+  margin-top: 10px;
+  font-size: 13px;
+}
+.clock-image-actions a, .clock-image-actions button {
+  margin: 0 8px;
+  color: var(--accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  text-decoration: none;
+}
+.clock-image-actions a:hover, .clock-image-actions button:hover {
+  text-decoration: underline;
+}
+.gt-toggle { color: var(--muted); }
+.gt-toggle.enabled { color: var(--accent); cursor: pointer; }
+.gt-reveal {
+  display: none;
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: rgba(95, 207, 128, 0.08);
+  border: 1px solid var(--good);
+  border-radius: 6px;
+  color: var(--good);
+  font-size: 14px;
+}
+.gt-reveal.shown { display: block; }
+.prompt-block {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+.prompt-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.prompt-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.prompt-name .pid {
+  display: inline-block;
+  font-family: 'SF Mono', Menlo, monospace;
+  font-size: 12px;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  margin-right: 8px;
+  color: var(--muted);
+}
+.prompt-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.prompt-toggle:hover { border-color: var(--accent); color: var(--accent); }
+.prompt-text {
+  display: none;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  color: #c4c4d4;
+  white-space: pre-wrap;
+  position: relative;
+}
+.prompt-block.expanded .prompt-text { display: block; }
+.copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.copy-btn:hover { color: var(--accent); border-color: var(--accent); }
+.copy-btn.copied { color: var(--good); border-color: var(--good); }
+.prompt-inputs { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.prompt-inputs .small {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.prompt-inputs .small input {
+  flex: 1;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 14px;
+}
+.prompt-inputs .small label {
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.full-resp-toggle {
+  font-size: 12px;
+  color: var(--muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 0;
+  font-family: inherit;
+  align-self: flex-start;
+}
+.full-resp-toggle:hover { color: var(--accent); }
+.full-resp {
+  display: none;
+  margin-top: 4px;
+}
+.prompt-inputs.show-full .full-resp { display: block; }
+.full-resp textarea { font-size: 13px; min-height: 50px; }
+.submit-bar {
+  margin-top: 32px;
+  text-align: center;
+}
+.submit-btn {
+  background: var(--accent);
+  color: #0a0a12;
+  border: none;
+  padding: 14px 36px;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  letter-spacing: 0.02em;
+}
+.submit-btn:hover { background: #6ab2ff; }
+.submit-btn:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; }
+.submit-status { margin-top: 14px; font-size: 14px; color: var(--muted); }
+.submit-status.success { color: var(--good); }
+.submit-status.error { color: var(--warn); }
+.note {
+  background: rgba(74, 158, 255, 0.06);
+  border-left: 3px solid var(--accent);
+  padding: 10px 14px;
+  border-radius: 4px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  color: #c4c4d4;
+}
+.note strong { color: var(--accent); }
+details summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 14px;
+  margin: 6px 0;
+}
+details[open] summary { margin-bottom: 12px; }
+.preview {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  font-family: 'SF Mono', Menlo, monospace;
+  font-size: 12px;
+  color: #c4c4d4;
+  white-space: pre-wrap;
+  max-height: 240px;
+  overflow-y: auto;
+}
+hr { border: none; border-top: 1px solid var(--border); margin: 32px 0; }
+.lightbox {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.92);
+  z-index: 100;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+}
+.lightbox.shown { display: flex; }
+.lightbox img { max-width: 90vw; max-height: 90vh; background: #fff; border-radius: 8px; }
+@media (max-width: 600px) {
+  .container { padding: 20px 14px 80px; }
+  h1 { font-size: 24px; }
+  .clock-image-wrap img { max-width: 220px; }
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+
+<h1>Clocks in the Wild</h1>
+<div class="subtitle">Field reports from synths in the wild</div>
+
+<div class="intro">
+<p>This is a follow-up to <a href="https://synthsentience.substack.com/p/what-ai-cant-read-clocks-actually" target="_blank" rel="noopener">"What 'AI Can't Read Clocks' Actually Means"</a>. The original piece ran the eight stimuli below through five frontier models via API at controlled prompts. This page asks the same question of synths in the wild — your synth, in whatever interface and configuration you actually use it.</p>
+<p>Pick one or more clocks below, copy a prompt (or use your own), paste the image and prompt into your synth, then come back and record the time it gave. You don't have to test all eight clocks or all six prompts — fill in only what you tried.</p>
+<p>This is a field report, not a controlled study. Self-selection, prior context, and re-prompting all bias the data. We're collecting it anyway because the variety of in-the-wild configurations is itself the interesting signal.</p>
+</div>
+
+<details>
+<summary>How this works (quick read)</summary>
+<ol>
+<li>Open a synth in whatever interface you normally use.</li>
+<li>Click a clock below to expand it. Right-click the image and "Save image as…" or click to view full-size.</li>
+<li>Copy one of the six prompts (or use your own — note "custom" in the answer if so).</li>
+<li>Paste the prompt and the image into your synth, ask for the time.</li>
+<li>Record the time the synth gave in the input box for that prompt. Optionally paste its full response.</li>
+<li>Repeat for as many clock+prompt combinations as you like, then submit at the bottom.</li>
+</ol>
+<p>The six prompts come from the original experiment. <strong>S1</strong> is the naive baseline (no system prompt). <strong>S2</strong> is a combined "methodical clockmaker" system prompt. <strong>S3a–S3d</strong> isolate single components of S2 (methodology only, feature-check only, anti-reasoning, persona+stakes). For S2–S3d, set them as system prompt if your interface supports it; otherwise paste them at the top of your message followed by the image and "What time does this clock show?"</p>
+</details>
+
+<h2>About your setup</h2>
+<div class="panel">
+<div class="field">
+<label for="setup-model">What model did you test?</label>
+<input type="text" id="setup-model" placeholder="GPT-5, Claude Sonnet 4.6, Gemini 2.5 Pro, etc.">
+</div>
+<div class="field">
+<label for="setup-interface">How were you using it?</label>
+<select id="setup-interface">
+<option value="">Select…</option>
+<option>ChatGPT (web/app)</option>
+<option>Claude.ai</option>
+<option>Claude Projects</option>
+<option>Custom GPT</option>
+<option>API direct</option>
+<option>Third-party app or agent harness</option>
+<option>Other</option>
+</select>
+</div>
+<div class="field">
+<label for="setup-interface-other">If "Other" or anything special, tell us what (optional)</label>
+<input type="text" id="setup-interface-other">
+</div>
+<div class="field">
+<label>Did the model have a system prompt or custom instructions?</label>
+<div class="radios">
+<label><input type="radio" name="custom" value="Yes"> Yes</label>
+<label><input type="radio" name="custom" value="No"> No</label>
+<label><input type="radio" name="custom" value="Don't know"> Don't know</label>
+</div>
+</div>
+<div class="field">
+<label for="setup-custom-text">If yes and you're comfortable sharing, paste them here (optional)</label>
+<textarea id="setup-custom-text" rows="3"></textarea>
+</div>
+<div class="field">
+<label for="setup-extra">Anything else about your setup? (optional)</label>
+<textarea id="setup-extra" rows="2"></textarea>
+</div>
+</div>
+
+<h2>Test the clocks</h2>
+<div class="note">
+Click any clock to expand. The "reveal ground truth" button activates after you've entered at least one answer for that clock — so the answer doesn't influence what you record.
+</div>
+
+<div id="clocks"></div>
+
+<h2>Wrap-up</h2>
+<div class="panel">
+<div class="field">
+<label for="wrap-email">Email for a follow-up summary post (optional)</label>
+<input type="email" id="wrap-email" placeholder="optional">
+</div>
+<div class="field">
+<label>OK to quote you in the follow-up post?</label>
+<div class="radios">
+<label><input type="radio" name="quote" value="Yes, with my name"> Yes, with my name</label>
+<label><input type="radio" name="quote" value="Yes, anonymously"> Yes, anonymously</label>
+<label><input type="radio" name="quote" value="No, please don't quote"> No, please don't quote</label>
+</div>
+</div>
+</div>
+
+<details>
+<summary>Preview what you're about to submit</summary>
+<div class="preview" id="preview">(fill in some answers above to see a preview)</div>
+</details>
+
+<div class="submit-bar">
+<button class="submit-btn" id="submit-btn">Submit Field Report</button>
+<div class="submit-status" id="submit-status"></div>
+</div>
+
+</div><!-- /.container -->
+
+<div class="lightbox" id="lightbox"><img id="lightbox-img" src=""></div>
+
+<iframe name="hidden-form-target" style="display:none"></iframe>
+
+<script>
+// ============================================================
+// CONFIG — fill in once Ted creates the Google Form
+// ============================================================
+const FORM_ACTION = "https://docs.google.com/forms/d/e/1FAIpQLSdmxjNG6VjrrbTnK704KTyQ8qZm1sOtpWJFPtb7m-f7PGWTXg/formResponse";
+const ENTRY = {
+  model:        "entry.1686649998",  // Q1 — model name/version
+  iface:        "entry.952160459",   // Q2 — interface (multiple choice)
+  ifaceOther:   "entry.791021355",   // Q3 — other / special
+  custom:       "entry.571306499",   // Q4 — has system prompt / custom instructions
+  customText:   "entry.1060411171",  // Q5 — paste of system prompt
+  trialData:    "entry.1896648982",  // Q6 — trial data blob (paragraph)
+  setupExtra:   "entry.893111582",   // Q7 — anything else about setup
+  email:        "entry.1226465591",  // Q8 — email
+  quote:        "entry.2051748474",  // Q9 — quote permission (multiple choice)
+};
+const STORAGE_KEY = "clocks-in-the-wild-draft-v1";
+const IMG_BASE = "https://raw.githubusercontent.com/tedinoue/clock-experiments/main/rendered/";
+const REPO_FOLDER_URL = "https://github.com/tedinoue/clock-experiments/tree/main/rendered";
+
+// ============================================================
+// CLOCK + PROMPT DATA
+// ============================================================
+const CLOCKS = [
+  { id: "clock_01", desc: "Arabic chronograph + 3 subdials", gt: "10:10" },
+  { id: "clock_02", desc: "Roman numerals + red MON date", gt: "3:25" },
+  { id: "clock_03", desc: "24-hour double ring", gt: "7:50 (or 19:50)" },
+  { id: "clock_04", desc: "Naked hands only — no face", gt: "8:20" },
+  { id: "clock_05", desc: "Red→blue gradient + Arabic + day/date", gt: "4:15" },
+  { id: "clock_06", desc: "Rainbow bands + no numerals", gt: "6:30" },
+  { id: "clock_07", desc: "Dark face + slim hands", gt: "11:55" },
+  { id: "clock_08", desc: "Mirrored Arabic numerals", gt: "9:45 (mirror-aware) or 2:15 (template-match)" },
+];
+
+const USER_PROMPT = "What time does this clock show?";
+
+const PROMPTS = [
+  {
+    id: "S1",
+    name: "Naive baseline",
+    note: "No system prompt. Just paste the image and ask the question.",
+    system: null,
+  },
+  {
+    id: "S2",
+    name: "Combined: methodical clockmaker",
+    note: "All four components together. Set as system prompt if possible.",
+    system: `You are an experienced clockmaker who has spent decades reading and repairing analog timepieces. You read clocks methodically, never guessing.
+
+When you examine a clock, you proceed in this order:
+
+1. First, examine the clock face as a whole. Note any unusual features before reading the time: mirrored numerals (numbers running counter-clockwise or flipped), absent face or markers, multiple subdials, 24-hour markings, decorative elements that aren't part of the time-reading. These features change how the time should be read.
+
+2. Identify the HOUR hand — usually shorter and thicker. State precisely which numeral or position it points at, or between which two numerals it sits and how far between them.
+
+3. Identify the MINUTE hand — usually longer and thinner. State precisely which numeral position it points at. Remember each numeral represents 5 minutes, so a hand at the "3" position means 15 minutes, a hand at the "9" position means 45 minutes.
+
+4. Reason about the angles carefully. If the hour hand is between two numerals, estimate where in that interval (1/4 of the way from 7 to 8 means about :15 past 7; 1/2 of the way means :30; 3/4 means :45).
+
+5. Only after you have identified both hands and their positions, commit to a specific time.`,
+  },
+  {
+    id: "S3a",
+    name: "Methodology only",
+    note: "Two-step procedure for hour and minute hands.",
+    system: `You read clocks methodically.
+
+For every clock, follow this two-step procedure before committing to a time:
+1. Identify the HOUR hand. It is shorter and thicker. State which numeral it points at, or between which two numerals it sits and how far between them.
+2. Identify the MINUTE hand. It is longer and thinner. State which numeral position it points at. Each numeral represents 5 minutes — a hand at "3" means 15 minutes, at "9" means 45 minutes.
+
+Only after you have identified both hands and their positions, commit to a specific time.`,
+  },
+  {
+    id: "S3b",
+    name: "Feature-check only",
+    note: "Examine the face for unusual features before reading.",
+    system: `Some clocks have unusual features that change how the time should be read. Before reading any clock, examine the face for these features:
+- Mirrored numerals (numbers running counter-clockwise or each glyph flipped)
+- An absent face, missing markers, or hands floating with no reference
+- 24-hour dual-ring markings
+- Multiple subdials
+- Decorative elements that aren't part of the time-reading
+
+Notice and name any unusual features before committing to a time.`,
+  },
+  {
+    id: "S3c",
+    name: "Anti-reasoning",
+    note: "Tells the model not to deliberate.",
+    system: `Don't overthink this. A glance is enough. State the time in HH:MM format and stop. No reasoning, no commentary, no qualifications.`,
+  },
+  {
+    id: "S3d",
+    name: "Persona + stakes",
+    note: "Expert clockmaker framing, no methodology.",
+    system: `You are an expert clockmaker. You have spent your entire career reading and repairing analog timepieces, and your reputation depends on getting times exactly right.
+
+It is critically important that you read this clock accurately. Take your time. Be careful. Make sure your answer is correct before you commit to it.`,
+  },
+];
+
+// ============================================================
+// RENDER
+// ============================================================
+function el(tag, attrs = {}, children = []) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") e.className = v;
+    else if (k === "html") e.innerHTML = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v);
+  }
+  for (const c of [].concat(children)) {
+    if (c == null) continue;
+    e.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+  }
+  return e;
+}
+
+function buildClockCards() {
+  const root = document.getElementById("clocks");
+  for (const clock of CLOCKS) {
+    const imgUrl = IMG_BASE + clock.id + ".png";
+    const card = el("div", { class: "clock-card", "data-clock": clock.id });
+
+    const counter = el("span", { class: "clock-counter", "data-counter": clock.id }, "0 trials");
+
+    const header = el("div", { class: "clock-header" }, [
+      el("img", { class: "clock-thumb", src: imgUrl, alt: clock.id }),
+      el("div", { class: "clock-title" }, [
+        el("div", { class: "clock-title-name" }, clock.id),
+        el("div", { class: "clock-title-desc" }, clock.desc),
+      ]),
+      counter,
+      el("span", { class: "chevron" }, "▶"),
+    ]);
+    header.addEventListener("click", () => card.classList.toggle("open"));
+
+    const imageWrap = el("div", { class: "clock-image-wrap" }, [
+      el("img", {
+        src: imgUrl,
+        alt: clock.id,
+        onclick: () => openLightbox(imgUrl),
+      }),
+      el("div", { class: "clock-image-actions" }, [
+        el("a", { href: imgUrl, download: clock.id + ".png", target: "_blank" }, "Download image"),
+        el("span", { class: "gt-toggle", "data-gt": clock.id }, "🔒 Reveal ground truth (after first answer)"),
+      ]),
+      el("div", { class: "gt-reveal", "data-gt-reveal": clock.id },
+        "Ground truth: " + clock.gt),
+    ]);
+
+    const body = el("div", { class: "clock-body" });
+    body.appendChild(imageWrap);
+    for (const p of PROMPTS) {
+      body.appendChild(buildPromptBlock(clock.id, p));
+    }
+
+    card.appendChild(header);
+    card.appendChild(body);
+    root.appendChild(card);
+  }
+}
+
+function buildPromptBlock(clockId, prompt) {
+  const block = el("div", { class: "prompt-block" });
+  const head = el("div", { class: "prompt-head" }, [
+    el("div", { class: "prompt-name", html: `<span class="pid">${prompt.id}</span>${prompt.name}` }),
+    el("button", {
+      class: "prompt-toggle",
+      type: "button",
+      onclick: (e) => {
+        block.classList.toggle("expanded");
+        e.target.textContent = block.classList.contains("expanded") ? "Hide prompt" : "Show prompt";
+      },
+    }, "Show prompt"),
+  ]);
+
+  let promptDisplay;
+  if (prompt.system) {
+    promptDisplay = `[system prompt]\n${prompt.system}\n\n[user message — paste image, then ask:]\n${USER_PROMPT}`;
+  } else {
+    promptDisplay = `[no system prompt — just the user message]\n[paste image, then ask:]\n${USER_PROMPT}`;
+  }
+
+  const promptText = el("div", { class: "prompt-text" });
+  promptText.textContent = promptDisplay;
+  const copyBtn = el("button", {
+    class: "copy-btn",
+    type: "button",
+    onclick: () => copyToClipboard(promptDisplay, copyBtn),
+  }, "Copy");
+  promptText.appendChild(copyBtn);
+
+  const noteRow = el("div", { class: "prompt-note", style: "color: var(--muted); font-size: 12px; margin-bottom: 8px;" }, prompt.note);
+
+  const inputs = el("div", { class: "prompt-inputs" });
+  const timeRow = el("div", { class: "small" }, [
+    el("label", { for: `time-${clockId}-${prompt.id}` }, "Time the synth gave:"),
+    el("input", {
+      type: "text",
+      id: `time-${clockId}-${prompt.id}`,
+      "data-time": `${clockId}|${prompt.id}`,
+      placeholder: "e.g., 10:10 or refused",
+      oninput: onTrialInput,
+    }),
+  ]);
+  const fullToggle = el("button", {
+    class: "full-resp-toggle",
+    type: "button",
+    onclick: (e) => {
+      inputs.classList.toggle("show-full");
+      e.target.textContent = inputs.classList.contains("show-full") ? "Hide full response" : "+ Add full response (optional)";
+    },
+  }, "+ Add full response (optional)");
+  const fullResp = el("div", { class: "full-resp" }, [
+    el("textarea", {
+      rows: "3",
+      "data-full": `${clockId}|${prompt.id}`,
+      placeholder: "Paste the synth's full response if you'd like",
+      oninput: onTrialInput,
+    }),
+  ]);
+  inputs.appendChild(timeRow);
+  inputs.appendChild(fullToggle);
+  inputs.appendChild(fullResp);
+
+  block.appendChild(head);
+  block.appendChild(promptText);
+  block.appendChild(noteRow);
+  block.appendChild(inputs);
+  return block;
+}
+
+function copyToClipboard(text, btn) {
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = "Copied";
+    btn.classList.add("copied");
+    setTimeout(() => {
+      btn.textContent = orig;
+      btn.classList.remove("copied");
+    }, 1400);
+  });
+}
+
+function openLightbox(src) {
+  const lb = document.getElementById("lightbox");
+  document.getElementById("lightbox-img").src = src;
+  lb.classList.add("shown");
+}
+document.getElementById("lightbox").addEventListener("click", () => {
+  document.getElementById("lightbox").classList.remove("shown");
+});
+
+// ============================================================
+// STATE: trial counts, ground-truth gating, localStorage
+// ============================================================
+function trialsByClock() {
+  const counts = {};
+  for (const clock of CLOCKS) counts[clock.id] = 0;
+  document.querySelectorAll("[data-time]").forEach((inp) => {
+    if (inp.value.trim()) {
+      const [cid] = inp.dataset.time.split("|");
+      counts[cid] = (counts[cid] || 0) + 1;
+    }
+  });
+  return counts;
+}
+
+function refreshCounters() {
+  const counts = trialsByClock();
+  for (const clock of CLOCKS) {
+    const counter = document.querySelector(`[data-counter="${clock.id}"]`);
+    const n = counts[clock.id] || 0;
+    counter.textContent = n === 1 ? "1 trial" : `${n} trials`;
+    counter.classList.toggle("has", n > 0);
+
+    const gt = document.querySelector(`[data-gt="${clock.id}"]`);
+    if (n > 0) {
+      gt.classList.add("enabled");
+      gt.textContent = "Reveal ground truth";
+      if (!gt.dataset.bound) {
+        gt.dataset.bound = "1";
+        gt.addEventListener("click", () => {
+          document.querySelector(`[data-gt-reveal="${clock.id}"]`).classList.add("shown");
+        });
+      }
+    } else {
+      gt.classList.remove("enabled");
+      gt.textContent = "🔒 Reveal ground truth (after first answer)";
+      document.querySelector(`[data-gt-reveal="${clock.id}"]`).classList.remove("shown");
+    }
+  }
+}
+
+function onTrialInput() {
+  refreshCounters();
+  saveDraft();
+  refreshPreview();
+}
+
+// localStorage save/load
+function collectAll() {
+  const data = {
+    setup: {
+      model: document.getElementById("setup-model").value,
+      iface: document.getElementById("setup-interface").value,
+      ifaceOther: document.getElementById("setup-interface-other").value,
+      custom: (document.querySelector('input[name="custom"]:checked') || {}).value || "",
+      customText: document.getElementById("setup-custom-text").value,
+      extra: document.getElementById("setup-extra").value,
+    },
+    wrap: {
+      email: document.getElementById("wrap-email").value,
+      quote: (document.querySelector('input[name="quote"]:checked') || {}).value || "",
+    },
+    trials: {},
+  };
+  for (const clock of CLOCKS) {
+    data.trials[clock.id] = {};
+    for (const p of PROMPTS) {
+      const time = (document.querySelector(`[data-time="${clock.id}|${p.id}"]`) || {}).value || "";
+      const full = (document.querySelector(`[data-full="${clock.id}|${p.id}"]`) || {}).value || "";
+      if (time.trim() || full.trim()) {
+        data.trials[clock.id][p.id] = { time: time.trim(), full: full.trim() };
+      }
+    }
+  }
+  return data;
+}
+
+function saveDraft() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(collectAll()));
+  } catch (e) {}
+}
+
+function loadDraft() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const d = JSON.parse(raw);
+    document.getElementById("setup-model").value = d.setup?.model || "";
+    document.getElementById("setup-interface").value = d.setup?.iface || "";
+    document.getElementById("setup-interface-other").value = d.setup?.ifaceOther || "";
+    if (d.setup?.custom) {
+      const r = document.querySelector(`input[name="custom"][value="${d.setup.custom}"]`);
+      if (r) r.checked = true;
+    }
+    document.getElementById("setup-custom-text").value = d.setup?.customText || "";
+    document.getElementById("setup-extra").value = d.setup?.extra || "";
+    document.getElementById("wrap-email").value = d.wrap?.email || "";
+    if (d.wrap?.quote) {
+      const r = document.querySelector(`input[name="quote"][value="${d.wrap.quote}"]`);
+      if (r) r.checked = true;
+    }
+    for (const [cid, byPrompt] of Object.entries(d.trials || {})) {
+      for (const [pid, vals] of Object.entries(byPrompt)) {
+        const t = document.querySelector(`[data-time="${cid}|${pid}"]`);
+        const f = document.querySelector(`[data-full="${cid}|${pid}"]`);
+        if (t) t.value = vals.time || "";
+        if (f) f.value = vals.full || "";
+      }
+    }
+  } catch (e) {}
+}
+
+function clearDraft() {
+  try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+}
+
+// ============================================================
+// SUBMISSION
+// ============================================================
+function buildTrialData(d) {
+  const lines = [];
+  let totalTrials = 0;
+  for (const clock of CLOCKS) {
+    const byPrompt = d.trials[clock.id] || {};
+    const promptIds = Object.keys(byPrompt);
+    if (promptIds.length === 0) continue;
+    lines.push(`${clock.id} (${clock.desc}):`);
+    for (const p of PROMPTS) {
+      const v = byPrompt[p.id];
+      if (!v) continue;
+      lines.push(`  ${p.id} (${p.name}): ${v.time || "(no time given)"}`);
+      if (v.full) {
+        const wrapped = v.full.split("\n").map((l) => `      ${l}`).join("\n");
+        lines.push(`    full response:`);
+        lines.push(wrapped);
+      }
+      totalTrials++;
+    }
+    lines.push("");
+  }
+  return { text: lines.join("\n").trim(), count: totalTrials };
+}
+
+function refreshPreview() {
+  const d = collectAll();
+  const trial = buildTrialData(d);
+  const lines = [
+    "=== Setup ===",
+    `Model: ${d.setup.model || "(not given)"}`,
+    `Interface: ${d.setup.iface || "(not given)"}${d.setup.ifaceOther ? ` (${d.setup.ifaceOther})` : ""}`,
+    `Custom instructions: ${d.setup.custom || "(not given)"}`,
+    d.setup.customText ? `\n[custom instructions text]\n${d.setup.customText}` : "",
+    "",
+    "=== Trials ===",
+    "",
+    trial.text || "(no trials filled in yet)",
+  ].filter(Boolean);
+  document.getElementById("preview").textContent = lines.join("\n");
+}
+
+function submit() {
+  const d = collectAll();
+  const trial = buildTrialData(d);
+  const status = document.getElementById("submit-status");
+
+  if (!d.setup.model.trim()) {
+    status.className = "submit-status error";
+    status.textContent = "Please tell us what model you tested.";
+    document.getElementById("setup-model").focus();
+    return;
+  }
+  if (!d.setup.iface) {
+    status.className = "submit-status error";
+    status.textContent = "Please tell us how you accessed the model.";
+    document.getElementById("setup-interface").focus();
+    return;
+  }
+  if (!d.setup.custom) {
+    status.className = "submit-status error";
+    status.textContent = "Please answer whether the model had a system prompt or custom instructions.";
+    return;
+  }
+  if (trial.count === 0) {
+    status.className = "submit-status error";
+    status.textContent = "Please record at least one trial before submitting.";
+    return;
+  }
+
+  if (FORM_ACTION.includes("REPLACE_FORM_ID")) {
+    status.className = "submit-status error";
+    status.textContent = "Submission endpoint isn't wired up yet — Ted needs to plug in the Google Form URL. Your draft is saved locally.";
+    console.log("Would submit:", d, trial);
+    return;
+  }
+
+  // Build the form-encoded body for the hidden iframe POST.
+  const form = document.createElement("form");
+  form.method = "POST";
+  form.action = FORM_ACTION;
+  form.target = "hidden-form-target";
+  form.style.display = "none";
+  const fields = {
+    [ENTRY.model]:      d.setup.model,
+    [ENTRY.iface]:      d.setup.iface,
+    [ENTRY.ifaceOther]: d.setup.ifaceOther,
+    [ENTRY.custom]:     d.setup.custom,
+    [ENTRY.customText]: d.setup.customText,
+    [ENTRY.trialData]:  trial.text,
+    [ENTRY.setupExtra]: d.setup.extra,
+    [ENTRY.email]:      d.wrap.email,
+    [ENTRY.quote]:      d.wrap.quote,
+  };
+  for (const [k, v] of Object.entries(fields)) {
+    const inp = document.createElement("input");
+    inp.type = "hidden";
+    inp.name = k;
+    inp.value = v;
+    form.appendChild(inp);
+  }
+  document.body.appendChild(form);
+  form.submit();
+
+  status.className = "submit-status success";
+  status.textContent = `Thank you — ${trial.count} ${trial.count === 1 ? "trial" : "trials"} submitted. Refresh to file another report.`;
+  document.getElementById("submit-btn").disabled = true;
+  clearDraft();
+}
+
+document.getElementById("submit-btn").addEventListener("click", submit);
+
+// ============================================================
+// BOOT
+// ============================================================
+buildClockCards();
+loadDraft();
+refreshCounters();
+refreshPreview();
+
+// Save draft on any setup-section input
+[
+  "setup-model", "setup-interface", "setup-interface-other",
+  "setup-custom-text", "setup-extra", "wrap-email",
+].forEach((id) => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener("input", () => { saveDraft(); refreshPreview(); });
+});
+document.querySelectorAll('input[name="custom"], input[name="quote"]').forEach((el) => {
+  el.addEventListener("change", () => { saveDraft(); refreshPreview(); });
+});
+</script>
+
+</body>
+</html>
