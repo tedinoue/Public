@@ -648,12 +648,9 @@ function buildPromptBlock(clockId, prompt) {
     }, "Show prompt"),
   ]);
 
-  let promptDisplay;
-  if (prompt.system) {
-    promptDisplay = `[system prompt]\n${prompt.system}\n\n[user message — paste image, then ask:]\n${USER_PROMPT}`;
-  } else {
-    promptDisplay = `[no system prompt — just the user message]\n[paste image, then ask:]\n${USER_PROMPT}`;
-  }
+  const promptDisplay = prompt.system
+    ? `${prompt.system}\n\n${USER_PROMPT}`
+    : USER_PROMPT;
 
   const promptText = el("div", { class: "prompt-text" });
   promptText.textContent = promptDisplay;
@@ -731,12 +728,14 @@ document.getElementById("lightbox").addEventListener("click", () => {
 function trialsByClock() {
   const counts = {};
   for (const clock of CLOCKS) counts[clock.id] = 0;
-  document.querySelectorAll("[data-time]").forEach((inp) => {
-    if (inp.value.trim()) {
-      const [cid] = inp.dataset.time.split("|");
-      counts[cid] = (counts[cid] || 0) + 1;
+  // Count any prompt cell that has either a time or a full-response entered.
+  for (const clock of CLOCKS) {
+    for (const p of PROMPTS) {
+      const t = (document.querySelector(`[data-time="${clock.id}|${p.id}"]`) || {}).value || "";
+      const f = (document.querySelector(`[data-full="${clock.id}|${p.id}"]`) || {}).value || "";
+      if (t.trim() || f.trim()) counts[clock.id] += 1;
     }
-  });
+  }
   return counts;
 }
 
@@ -856,7 +855,8 @@ function buildTrialData(d) {
     for (const p of PROMPTS) {
       const v = byPrompt[p.id];
       if (!v) continue;
-      lines.push(`  ${p.id} (${p.name}): ${v.time || "(no time given)"}`);
+      const timeStr = v.time || "(time not specified — see full response)";
+      lines.push(`  ${p.id} (${p.name}): ${timeStr}`);
       if (v.full) {
         const wrapped = v.full.split("\n").map((l) => `      ${l}`).join("\n");
         lines.push(`    full response:`);
